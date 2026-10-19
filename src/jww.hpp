@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 #include <cstdint>
+#include <cstdio>
 #include <string>
 #include <vector>
 #include <map>
@@ -111,6 +112,9 @@ Drawing read_buffer(const std::vector<uint8_t>& data);
 std::string sjis_to_utf8(const std::string& s);
 std::string utf8_to_sjis(const std::string& s, bool* lossy = nullptr);
 std::string utf16_to_utf8(const std::u16string& s);
+
+// fopen() for UTF-8 paths (uses _wfopen on Windows).
+std::FILE* u8fopen(const std::string& path, const char* mode);
 
 // Paper size in mm (width, height) for a 図面サイズ code.
 Pt paper_size(uint32_t code);

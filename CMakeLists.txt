@@ -23,3 +23,6 @@ else()
 endif()
 install(TARGETS jww2dxf RUNTIME DESTINATION bin)
 
+
+enable_testing()
+add_test(NAME samples COMMAND ${CMAKE_COMMAND} -DJWW2DXF=$<TARGET_FILE:jww2dxf> -DSRC=${CMAKE_SOURCE_DIR} -P ${CMAKE_SOURCE_DIR}/tests/run.cmake)

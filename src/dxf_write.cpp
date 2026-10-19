@@ -102,7 +102,7 @@ private:
     void g(int code, const std::string& v) { put(code, v.c_str()); }
     void g(int code, int v) { put(code, std::to_string(v).c_str()); }
     void gd(int code, double v) {
-        if (!std::isfinite(v)) v = 0;
+        if (!std::isfinite(v) || std::fabs(v) < 1e-10) v = 0;  // also drops libm noise around 0
         char buf[40];
         std::snprintf(buf, sizeof buf, "%.12g", v);
         if (!std::strpbrk(buf, ".eEn")) std::strcat(buf, ".0");
@@ -200,10 +200,10 @@ private:
         static const uint8_t base[][3] = {{255, 0, 0}, {255, 255, 0}, {0, 255, 0}, {0, 255, 255}, {0, 0, 255}, {255, 0, 255}, {255, 255, 255}, {128, 128, 128}, {192, 192, 192}};
         static const int idx[] = {1, 2, 3, 4, 5, 6, 7, 8, 9};
         int best = 7;
-        long bd = 1L << 40;
+        long long bd = 1LL << 40;
         for (int i = 0; i < 9; i++) {
-            long dr = long(r) - base[i][0], dg = long(gg) - base[i][1], db = long(b) - base[i][2];
-            long d = dr * dr + dg * dg + db * db;
+            long long dr = long(r) - base[i][0], dg = long(gg) - base[i][1], db = long(b) - base[i][2];
+            long long d = dr * dr + dg * dg + db * db;
             if (d < bd) { bd = d; best = idx[i]; }
         }
         if (r + gg + b == 0) return 7;  // black on white paper: AutoCAD shows 7 as black on white
@@ -367,7 +367,7 @@ private:
         return v;
     }
     static bool read_file(const std::string& path, std::vector<uint8_t>& d) {
-        std::FILE* f = std::fopen(path.c_str(), "rb");
+        std::FILE* f = u8fopen(path, "rb");
         if (!f) return false;
         uint8_t buf[65536];
         size_t n;
@@ -398,7 +398,7 @@ private:
                 written_.insert(base);
                 std::error_code ec;
                 std::filesystem::create_directories(std::filesystem::u8path(o_.image_dir), ec);
-                std::FILE* out = std::fopen((std::filesystem::u8path(o_.image_dir) / std::filesystem::u8path(base)).string().c_str(), "wb");
+                std::FILE* out = u8fopen(o_.image_dir + "/" + base, "wb");
                 if (out) { std::fwrite(data.data(), 1, data.size(), out); std::fclose(out); }
             }
         } else {
@@ -407,7 +407,7 @@ private:
             if (p.rfind("./", 0) == 0) p = p.substr(2);
             bool abs = p.size() > 1 && (p[0] == '/' || p[1] == ':');
             std::string local = abs ? p : (o_.source_dir.empty() ? p : o_.source_dir + "/" + p);
-            read_file(std::filesystem::u8path(local).string(), data);
+            read_file(local, data);
         }
         int pw = 0, ph = 0;
         if (data.empty() || !image_size(data, pw, ph)) {

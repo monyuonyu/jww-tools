@@ -412,9 +412,13 @@ Drawing read_buffer(const std::vector<uint8_t>& data) {
 }
 
 Drawing read_file(const std::string& path) {
-    std::ifstream f(path, std::ios::binary);
+    std::FILE* f = u8fopen(path, "rb");
     if (!f) throw std::runtime_error("cannot open " + path);
-    std::vector<uint8_t> d((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    std::vector<uint8_t> d;
+    uint8_t buf[65536];
+    size_t n;
+    while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) d.insert(d.end(), buf, buf + n);
+    std::fclose(f);
     return read_buffer(d);
 }
 

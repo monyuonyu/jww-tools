@@ -4,6 +4,9 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 namespace jww {
 
@@ -89,6 +92,20 @@ std::string utf8_to_sjis(const std::string& s, bool* lossy) {
         }
     }
     return o;
+}
+
+std::FILE* u8fopen(const std::string& path, const char* mode) {
+#ifdef _WIN32
+    auto wide = [](const std::string& u) {
+        int n = MultiByteToWideChar(CP_UTF8, 0, u.c_str(), -1, nullptr, 0);
+        std::wstring w(n > 0 ? n - 1 : 0, L'\0');
+        if (n > 1) MultiByteToWideChar(CP_UTF8, 0, u.c_str(), -1, &w[0], n);
+        return w;
+    };
+    return _wfopen(wide(path).c_str(), wide(mode).c_str());
+#else
+    return std::fopen(path.c_str(), mode);
+#endif
 }
 
 }  // namespace jww

@@ -37,7 +37,34 @@ static void usage() {
         stderr);
 }
 
+#ifdef _WIN32
+#include <windows.h>
+#include <shellapi.h>
+#include <vector>
+#endif
+
 int main(int argc, char** argv) {
+#ifdef _WIN32
+    // Use the UTF-16 command line so that Japanese file names work whatever the ANSI code page is.
+    std::vector<std::string> u8args;
+    std::vector<char*> u8argv;
+    {
+        int wargc = 0;
+        LPWSTR* wargv = CommandLineToArgvW(GetCommandLineW(), &wargc);
+        if (wargv) {
+            for (int i = 0; i < wargc; i++) {
+                int n = WideCharToMultiByte(CP_UTF8, 0, wargv[i], -1, nullptr, 0, nullptr, nullptr);
+                std::string s(n > 0 ? n - 1 : 0, '\0');
+                if (n > 1) WideCharToMultiByte(CP_UTF8, 0, wargv[i], -1, &s[0], n, nullptr, nullptr);
+                u8args.push_back(s);
+            }
+            LocalFree(wargv);
+            for (auto& s : u8args) u8argv.push_back(&s[0]);
+            argc = int(u8argv.size());
+            argv = u8argv.data();
+        }
+    }
+#endif
     std::string in, out;
     bool json = false, quiet = false;
     jww::DxfOptions opt;
@@ -96,7 +123,7 @@ int main(int argc, char** argv) {
             opt.image_ref_prefix = (s2 == std::string::npos ? stem : stem.substr(s2 + 1)) + "_images/";
         }
     }
-    std::FILE* f = out == "-" ? stdout : std::fopen(out.c_str(), "wb");
+    std::FILE* f = out == "-" ? stdout : jww::u8fopen(out, "wb");
     if (!f) { std::fprintf(stderr, "jww2dxf: cannot write %s\n", out.c_str()); return 1; }
     if (json) jww::write_json(f, dw);
     else jww::write_dxf(f, dw, opt);

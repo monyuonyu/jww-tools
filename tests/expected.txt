@@ -1,0 +1,13 @@
+basic.jww CIRCLE=1 LINE=2
+basic_v600.jws CIRCLE=1 LINE=2
+basic_v700.jws CIRCLE=1 LINE=2
+blocks.jww CIRCLE=1 ELLIPSE=1 LINE=4
+blocks_v700.jws CIRCLE=1 ELLIPSE=1 LINE=4
+geometry.jww ARC=1 CIRCLE=1 ELLIPSE=1 LINE=3 POINT=1 HATCH=2 TEXT=1
+geometry_v700.jws ARC=1 CIRCLE=1 ELLIPSE=1 LINE=3 POINT=1 HATCH=2 TEXT=1
+image.jww IMAGE=1 LINE=2
+image_v700.jws IMAGE=1 LINE=2
+scales.jww LINE=3
+scales_v700.jws LINE=3
+unicode.jww LINE=2 TEXT=2
+unicode_v700.jws LINE=2 TEXT=2
