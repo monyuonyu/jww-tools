@@ -133,6 +133,7 @@ private:
         double ox = 0, oy = 0;  // origin shift in paper mm (0 inside block definitions)
         std::string owner;      // owning block record handle
         bool in_block = false;
+        int layer_key = -1;     // members of a block take the layer of the outermost INSERT
     };
     static double X(const Ctx& c, double x) { return (x + c.ox) * c.s; }
     static double Y(const Ctx& c, double y) { return (y + c.oy) * c.s; }
@@ -146,8 +147,11 @@ private:
 
     std::map<int, std::string> layer_names_;
     std::set<int> used_layers_;
+    const Ctx* cur_ctx_ = nullptr;
     std::string layer(const Base& b) {
+        if (cur_ctx_ && cur_ctx_->in_block) return "0";
         int key = (b.glayer & 15) * 16 + (b.layer & 15);
+        if (cur_ctx_ && cur_ctx_->layer_key >= 0) key = cur_ctx_->layer_key;
         used_layers_.insert(key);
         return layer_name(key);
     }
@@ -310,18 +314,41 @@ private:
     void text(const Entity& e, const Ctx& c) {
         if (e.str.empty()) return;
         if (e.str.rfind("^@BM", 0) == 0) { image(e, c); return; }
+        // Jw_cad pads strings with trailing "・" to spread them between the start and end
+        // points (均等割付); like Jw_cad's own DXF export, write the rest as a "Fit" text.
+        std::string str = e.str;
+        static const std::string dot = "\xE3\x83\xBB";  // U+30FB KATAKANA MIDDLE DOT
+        bool fit = false;
+        while (str.size() > dot.size() && str.compare(str.size() - dot.size(), dot.size(), dot) == 0) {
+            str.erase(str.size() - dot.size());
+            fit = true;
+        }
+        if (fit) {
+            bool blank = true;
+            for (size_t i = 0; i < str.size();) {
+                if (str[i] == ' ') { i++; continue; }
+                if (str.compare(i, 3, "\xE3\x80\x80") == 0) { i += 3; continue; }  // U+3000
+                blank = false;
+                break;
+            }
+            if (blank || (e.p[0].x == e.p[1].x && e.p[0].y == e.p[1].y)) { str = e.str; fit = false; }
+        }
         double h = e.size_y * c.s * o_.text_height_factor;
         double w = e.size_y != 0 ? std::fabs(e.size_x / e.size_y) : 1;
         common("TEXT", e.b, c, false);
         sub("AcDbText");
         gd(10, X(c, e.p[0].x)); gd(20, Y(c, e.p[0].y)); gd(30, 0);
         gd(40, h > 0 ? h : 1);
-        gs(1, e.str);
+        gs(1, str);
         double ang = norm_deg(e.angle);
         if (ang != 0) gd(50, ang);
         if (std::fabs(w - 1) > 1e-9) gd(41, w);
+        if ((e.text_type / 10000) & 1) gd(51, 15);  // italic (斜体: +10000)
         g(7, enc(style_for(e)));
-        if ((e.text_type / 10000) % 2 == 1 || (e.text_type >= 20000 && ((e.text_type / 10000) & 1))) gd(51, 15);  // italic
+        if (fit) {
+            g(72, 5);
+            gd(11, X(c, e.p[1].x)); gd(21, Y(c, e.p[1].y)); gd(31, 0);
+        }
         sub("AcDbText");
     }
     void image(const Entity& e, const Ctx& c) {
@@ -340,12 +367,102 @@ private:
         gd(12, X(c, d.x)); gd(22, Y(c, d.y)); gd(32, 0);
         gd(13, X(c, cc.x)); gd(23, Y(c, cc.y)); gd(33, 0);
     }
+    struct HV { double x, y, b; };
+    // vertices of an (elliptic) arc from t0 to t1; circular arcs use bulges
+    std::vector<HV> arc_verts(Pt ctr, double ra, double rb, double tilt, double t0, double t1, bool include_end) {
+        std::vector<HV> v;
+        auto at = [&](double t) {
+            double x = ra * std::cos(t), y = rb * std::sin(t);
+            return Pt{ctr.x + x * std::cos(tilt) - y * std::sin(tilt), ctr.y + x * std::sin(tilt) + y * std::cos(tilt)};
+        };
+        double sw = t1 - t0;
+        if (std::fabs(ra - rb) <= 1e-12 * std::max(1.0, ra)) {
+            int k = std::max(1, int(std::ceil(std::fabs(sw) / (kPi / 2) - 1e-9)));
+            double b = std::tan(sw / k / 4);
+            for (int i = 0; i < k; i++) { Pt q = at(t0 + sw * i / k); v.push_back({q.x, q.y, b}); }
+        } else {
+            double rmax = std::max(std::fabs(ra), std::fabs(rb));
+            double step = rmax > 0 ? 2 * std::acos(1 - std::min(0.005 / rmax, 2e-4)) : kPi / 4;
+            int n = std::max(8, std::min(720, int(std::ceil(std::fabs(sw) / std::max(step, 2 * kPi / 720)))));
+            for (int i = 0; i < n; i++) { Pt q = at(t0 + sw * i / n); v.push_back({q.x, q.y, 0}); }
+        }
+        if (include_end) { Pt q = at(t1); v.push_back({q.x, q.y, 0}); }
+        return v;
+    }
+    void hatch(const Entity& e, const Ctx& c, bool has_rgb) {
+        std::vector<std::vector<HV>> paths;
+        if (e.b.pen_style < 101) {
+            std::vector<HV> v;
+            for (const Pt& q : e.p) v.push_back({q.x, q.y, 0});
+            paths.push_back(v);
+        } else {
+            Pt ctr = e.p[0];
+            double r = e.p[1].x, flat = e.p[1].y, tilt = e.p[2].x, st = e.p[2].y, sw = e.p[3].x, kind = e.p[3].y;
+            int style = e.b.pen_style;
+            bool full = std::fabs(sw) >= 2 * kPi - 1e-9 || (style == 101 && kind == 100);
+            if (full) { st = 0; sw = 2 * kPi; }
+            if (style == 105 || style == 106) {
+                double ri = kind, ra2 = ri, rb2 = ri * flat;
+                if (style == 106) { ra2 = ri; rb2 = r * flat - (r - ri); }
+                if (full) {
+                    paths.push_back(arc_verts(ctr, r, r * flat, tilt, 0, 2 * kPi, false));
+                    paths.push_back(arc_verts(ctr, ra2, rb2, tilt, 0, 2 * kPi, false));
+                } else {
+                    auto v = arc_verts(ctr, r, r * flat, tilt, st, st + sw, true);
+                    auto w = arc_verts(ctr, ra2, rb2, tilt, st + sw, st, true);
+                    v.insert(v.end(), w.begin(), w.end());
+                    paths.push_back(v);
+                }
+            } else if (full) {
+                paths.push_back(arc_verts(ctr, r, r * flat, tilt, 0, 2 * kPi, false));
+            } else {
+                auto v = arc_verts(ctr, r, r * flat, tilt, st, st + sw, true);
+                if (kind == 0) v.insert(v.begin(), HV{ctr.x, ctr.y, 0});
+                else if (kind == -1) {
+                    double half = sw / 2, rr = r / std::cos(half);
+                    double x = rr * std::cos(st + half), y = rr * flat * std::sin(st + half);
+                    v.insert(v.begin(), HV{ctr.x + x * std::cos(tilt) - y * std::sin(tilt), ctr.y + x * std::sin(tilt) + y * std::cos(tilt), 0});
+                }
+                paths.push_back(v);
+            }
+        }
+        common("HATCH", e.b, c, false, e.color, has_rgb);
+        sub("AcDbHatch");
+        gd(10, 0); gd(20, 0); gd(30, 0);
+        gd(210, 0); gd(220, 0); gd(230, 1);
+        g(2, "SOLID"); g(70, 1); g(71, 0);
+        g(91, int(paths.size()));
+        for (size_t k = 0; k < paths.size(); k++) {
+            const auto& v = paths[k];
+            bool bulges = false;
+            for (auto& q : v) bulges |= q.b != 0;
+            g(92, k == 0 ? 3 : 2);  // polyline (+ external for the first)
+            g(72, bulges ? 1 : 0); g(73, 1); g(93, int(v.size()));
+            for (auto& q : v) { gd(10, X(c, q.x)); gd(20, Y(c, q.y)); if (bulges) gd(42, q.b); }
+            g(97, 0);
+        }
+        g(75, 0); g(76, 1); g(98, 0);
+    }
     void solid(const Entity& e, const Ctx& c) {
         bool has_rgb = e.b.pen_color == 10;
         if (e.b.pen_style < 101) {
+            // A solid without area is drawn by Jw_cad as a line of its colour.
+            std::vector<Pt> v;
+            for (const Pt& q : e.p)
+                if (v.empty() || q.x != v.back().x || q.y != v.back().y) v.push_back(q);
+            if (v.size() > 1 && v.front().x == v.back().x && v.front().y == v.back().y) v.pop_back();
+            if (v.size() == 2) {
+                common("LINE", e.b, c, true, e.color, has_rgb);
+                sub("AcDbLine");
+                gd(10, X(c, v[0].x)); gd(20, Y(c, v[0].y)); gd(30, 0);
+                gd(11, X(c, v[1].x)); gd(21, Y(c, v[1].y)); gd(31, 0);
+                return;
+            }
+            if (o_.hatch) { hatch(e, c, has_rgb); return; }
             solid_quad(e.b, c, e.p[0], e.p[1], e.p[2], e.p[3], e.color, has_rgb);
             return;
         }
+        if (o_.hatch && e.b.pen_style != 111) { hatch(e, c, has_rgb); return; }
         // arc solids
         Pt ctr = e.p[0];
         double r = e.p[1].x, flat = e.p[1].y, tilt = e.p[2].x, st = e.p[2].y, sw = e.p[3].x, kind = e.p[3].y;
@@ -356,7 +473,10 @@ private:
         int style = e.b.pen_style;
         bool fullc = std::fabs(sw) >= 2 * kPi - 1e-9 || (style == 101 && kind == 100) || (style == 111 && kind == 100);
         if (fullc) { st = 0; sw = 2 * kPi; }
-        int n = std::max(8, int(std::ceil(std::fabs(sw) / (2 * kPi) * 72)));
+        // segments: chord error below 0.005 paper mm and 0.02% of the radius (at most 720 per turn)
+        double rmax = std::max(r, r * flat);
+        double step = rmax > 0 ? 2 * std::acos(1 - std::min(0.005 / rmax, 2e-4)) : kPi / 4;
+        int n = std::max(8, std::min(720, int(std::ceil(std::fabs(sw) / std::max(step, 2 * kPi / 720)))));
         if (style == 101) {
             if (kind == 0 || kind == 100) {  // sector / full circle
                 for (int i = 0; i < n; i++) {
@@ -466,7 +586,9 @@ private:
         double ca = std::cos(ins.angle), sa = std::sin(ins.angle);
         x.a = ca * ins.sx; x.b = -sa * ins.sy; x.c = sa * ins.sx; x.d = ca * ins.sy;
         x.tx = ins.p[0].x; x.ty = ins.p[0].y;
-        explode_with(*defs_[ins.number], x, c, depth);
+        Ctx c2 = c;
+        if (c2.layer_key < 0 && !c2.in_block) c2.layer_key = (ins.b.glayer & 15) * 16 + (ins.b.layer & 15);
+        explode_with(*defs_[ins.number], x, c2, depth);
     }
     void explode_with(const BlockDef& bd, const Xf& x, const Ctx& c, int depth) {
         for (const Entity& e0 : bd.ents) {
@@ -497,7 +619,11 @@ private:
             case Kind::Point: e.p[0] = x.ap(e.p[0]); break;
             case Kind::Text:
                 e.p[0] = x.ap(e.p[0]); e.p[1] = x.ap(e.p[1]);
-                e.size_x *= sx; e.size_y *= sy; e.angle += rot * 180 / kPi;
+                e.size_x *= sx; e.size_y *= sy;
+                {   // Jw_cad keeps text readable: the baseline direction is transformed, the glyphs are not mirrored
+                    double t = e.angle * kPi / 180, cx_ = std::cos(t), sy_ = std::sin(t);
+                    e.angle = std::atan2(x.c * cx_ + x.d * sy_, x.a * cx_ + x.b * sy_) * 180 / kPi;
+                }
                 break;
             case Kind::Solid:
                 if (e.b.pen_style >= 101) {
@@ -532,6 +658,12 @@ private:
     }
 
     void emit(const Entity& e, const Ctx& c, int depth = 0) {
+        const Ctx* saved = cur_ctx_;
+        cur_ctx_ = &c;
+        emit1(e, c, depth);
+        cur_ctx_ = saved;
+    }
+    void emit1(const Entity& e, const Ctx& c, int depth) {
         switch (e.kind) {
             case Kind::Line: line(e, c); break;
             case Kind::Arc: arc(e, c); break;
@@ -544,7 +676,10 @@ private:
                     const Entity& s = e.sub[i];
                     if (i >= 2 && s.kind == Kind::Line && s.p[0].x == s.p[1].x && s.p[0].y == s.p[1].y) continue;  // unused aux line
                     if (i >= 4) continue;  // dimension reference points are not drawn
-                    emit(s, c, depth);
+                    Entity part = s;  // the parts live on the dimension's layer
+                    part.b.layer = e.b.layer;
+                    part.b.glayer = e.b.glayer;
+                    emit(part, c, depth);
                 }
                 break;
         }

@@ -8,6 +8,7 @@ namespace jww {
 struct DxfOptions {
     enum Version { R12, R2000, R2007 } version = R2000;
     bool explode_blocks = false;
+    bool hatch = false;         // write solids as HATCH (default: SOLID triangles/quads, read by more programs)
     bool paper_units = false;   // write paper millimetres instead of real size
     bool skip_temporary_points = false;  // Jw_cad's own DXF export writes 仮点 too
     double text_height_factor = 1.0;  // DXF text height = Jw_cad character height * factor

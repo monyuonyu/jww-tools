@@ -22,6 +22,7 @@ static void usage() {
         "  --r2000        write DXF R2000 (AC1015, Shift_JIS text; default)\n"
         "  --utf8         write DXF R2007 (AC1021, UTF-8 text)\n"
         "  --explode      expand blocks instead of writing INSERTs\n"
+        "  --hatch        write solids (ソリッド) as HATCH instead of SOLID pieces\n"
         "  --paper        keep paper millimetres (do not apply layer group scales)\n"
         "  --group-scale  scale each layer group by its own scale (default: like Jw_cad,\n"
         "                 every group at the scale of the current write group)\n"
@@ -45,6 +46,7 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(a, "--r2000")) opt.version = jww::DxfOptions::R2000;
         else if (!std::strcmp(a, "--utf8")) opt.version = jww::DxfOptions::R2007;
         else if (!std::strcmp(a, "--explode")) opt.explode_blocks = true;
+        else if (!std::strcmp(a, "--hatch")) opt.hatch = true;
         else if (!std::strcmp(a, "--paper")) opt.paper_units = true;
         else if (!std::strcmp(a, "--group-scale")) opt.group_scale = true;
         else if (!std::strcmp(a, "--center")) opt.origin_center = true;
