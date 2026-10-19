@@ -1,0 +1,63 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: sudo apt-get update && sudo apt-get install -y g++-mingw-w64-x86-64 ninja-build
+      - name: Linux (static)
+        run: |
+          cmake -S . -B build -G Ninja -DJWW_STATIC=ON
+          cmake --build build
+          cd build && ctest --output-on-failure
+      - name: Windows (MinGW-w64, static)
+        run: |
+          cat > mingw.cmake <<'EOF'
+          set(CMAKE_SYSTEM_NAME Windows)
+          set(CMAKE_C_COMPILER x86_64-w64-mingw32-gcc)
+          set(CMAKE_CXX_COMPILER x86_64-w64-mingw32-g++-posix)
+          set(CMAKE_FIND_ROOT_PATH /usr/x86_64-w64-mingw32)
+          EOF
+          cmake -S . -B build-win -G Ninja -DCMAKE_TOOLCHAIN_FILE=$PWD/mingw.cmake -DJWW_STATIC=ON
+          cmake --build build-win
+          x86_64-w64-mingw32-objdump -p build-win/jww2dxf.exe | grep 'DLL Name'
+      - name: Package
+        run: |
+          ver=${GITHUB_REF_NAME#v}
+          [ "$GITHUB_REF_TYPE" = tag ] || ver=dev
+          mkdir -p dist/jww-tools-$ver-linux-x86_64 dist/jww-tools-$ver-windows-x86_64
+          for d in dist/jww-tools-$ver-*; do cp LICENSE README.md README.ja.md README.zh-CN.md $d/; done
+          cp build/jww2dxf dist/jww-tools-$ver-linux-x86_64/
+          cp build-win/jww2dxf.exe dist/jww-tools-$ver-windows-x86_64/
+          cd dist
+          tar czf jww-tools-$ver-linux-x86_64.tar.gz jww-tools-$ver-linux-x86_64
+          zip -qr jww-tools-$ver-windows-x86_64.zip jww-tools-$ver-windows-x86_64
+          sha256sum *.tar.gz *.zip > SHA256SUMS
+          cat SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jww-tools
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/SHA256SUMS
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes=docs/release-notes/${GITHUB_REF_NAME}.md
+          [ -f "$notes" ] || notes=/dev/null
+          gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/*.zip dist/SHA256SUMS --title "jww-tools ${GITHUB_REF_NAME#v}" --notes-file "$notes"

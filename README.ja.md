@@ -1,0 +1,102 @@
+[English](README.md) | **日本語** | [简体中文](README.zh-CN.md)
+
+> [README.md](README.md)（英語版が原文）の翻訳です。
+
+# jww-tools
+
+`jww2dxf` は [Jw_cad](https://www.jwcad.net/) の図面（`.jww`、図形登録の `.jws`）を DXF に変換します。
+FreeCAD・LibreCAD・QCAD などの無料の CAD で Jw_cad の図面を開けるようにするためのものです。
+Jw_cad は日本で広く使われている無料の 2D CAD で、会社の図面の多くが `.jww` ですが、ほかのソフトでは開けません。
+
+依存ライブラリの無い小さな C++17 のプログラムです（Windows・Linux とも実行ファイル 1 つ）。
+読み取り部分は、Jw_cad の作者が公開している「Jw_cadのデータ形式」と MFC の `CArchive` の保存形式から書きました。
+Jw_cad 自身の DXF 出力と、図形ごとに突き合わせて確かめています。
+
+[freecad-ja-unified](https://github.com/monyuonyu/freecad-ja-unified)（日本語化した FreeCAD）に同梱していて、`.jww` をそのまま開けます。
+
+## ダウンロード
+
+Windows 用と Linux 用の実行ファイルは [Releases](https://github.com/monyuonyu/jww-tools/releases) にあります
+（どちらもファイル 1 つ。Windows 版は署名していないので、SmartScreen の警告が出ることがあります）。
+
+## 使い方
+
+```
+jww2dxf 図面.jww                 # 図面.dxf を書く（DXF R2000、文字は Shift_JIS）
+jww2dxf 図面.jww 出力.dxf --utf8  # DXF R2007、文字は UTF-8
+jww2dxf --json 図面.jww          # 読んだ内容を全部 JSON で出す
+```
+
+| オプション | |
+|---|---|
+| `--r12` / `--r2000` / `--utf8` | DXF R12（AC1009）／R2000（AC1015、既定）／R2007（AC1021、UTF-8） |
+| `--explode` | ブロックを分解して書く（`INSERT` を使わない） |
+| `--hatch` | ソリッドを `SOLID` の小片でなく `HATCH` で書く |
+| `--group-scale` | レイヤグループごとに、それぞれの縮尺で実寸にする（既定は Jw_cad と同じく、全部を書込レイヤグループの縮尺で） |
+| `--center` | Jw_cad の原点（用紙の中心）のままにする（既定は Jw_cad と同じく、用紙の左下が (0,0)） |
+| `--paper` | 用紙上の mm のまま（縮尺をかけない） |
+| `--text-factor F` | DXF の文字の高さ = Jw_cad の文字の高さ × F（既定 1。Jw_cad 自身の出力は 0.83） |
+| `--no-temp` | 仮点を書かない |
+| `--no-images` | 画像（`IMAGE`）を書かない |
+| `-q` | 警告を出さない |
+
+終了コード：0 = 変換できた、1 = 読めない、3 = 図形の並びを最後まで読めなかった（読めたところまでは DXF にある）。
+
+## 変換するもの
+
+| Jw_cad | DXF |
+|---|---|
+| 線 | `LINE` |
+| 円・円弧（傾き・扁平も） | `CIRCLE`・`ARC`・`ELLIPSE` |
+| 点・仮点 | `POINT` |
+| 文字（フォント・大きさ・角度・斜体・縦字・`^`） | `TEXT`（Shift_JIS か UTF-8。CP932 に無い文字は `\U+XXXX`） |
+| 末尾を「・」で埋めた文字（均等割付） | Jw_cad と同じく、両端揃え（Fit）の `TEXT` |
+| 寸法図形 | 線と文字 |
+| ソリッド（四角形、円・扇形・弓形・円環のソリッド、任意色） | `SOLID` の小片、`--hatch` なら `HATCH`。任意色は RGB で |
+| ブロック（入れ子・倍率・回転・反転） | `BLOCK` と `INSERT`（文字を含む反転ブロックは分解する。Jw_cad は文字を裏返さないため） |
+| 画像（`^@BM…`）、リンクも同梱（Ver.7）も | `IMAGE`。同梱の画像は `<出力名>_images/` に取り出す |
+| レイヤグループ×レイヤ（16×16）、名前、非表示 | 画層名 `<グループ><レイヤ>_<グループ名>_<レイヤ名>`（例：`0A_1F_通り芯`） |
+| 線種 1〜9、ランダム線、倍長線種 | Jw_cad の模様の `LTYPE` |
+| 線色 1〜9 と SXF の色、線の太さ | ACI の色（1 水色→4、2 黒→7、3 緑→3、4 黄→2、5 ピンク→6、6 青→5、7→4、8 赤→1、9 灰→8）、RGB、線の太さ |
+
+ファイルの版：実際に出回っているデータの版をすべて読みます — 220、230、300、351、420、600、700
+（Jw_cad for Windows 2.x から、今も 700 で保存する現在の 10.x まで）。文字列は ANSI（Shift_JIS）と Unicode の両方。
+形式の説明が無い古い版（たとえば 65）はできる範囲で読みます。DOS 版 Jw_cad の `.jwc` には対応していません。
+
+## 確かめたこと
+
+Jw_cad 10.03.7 は `JWW2DXFConv.dll` で DXF を書き出します。この DLL を Windows で直接呼んで（`ExecDxfExport(hwnd, jww, dxf)`）
+基準の DXF を作り、こちらの出力の図形を一つずつ突き合わせました（種類、レイヤグループとレイヤ、座標（図面の大きさの 1e-6 以内）、
+文字列と角度、塗りの面積）。照合の道具は `tools/oracle/` にあります。
+
+307 図面（公開されている見本図面、昔の Jw_cad の配布物、ezjww の試験図面）。版は 220（13）、230（14）、300（1）、351（23）、
+420（25）、600（19）、700（212）：
+
+| | Jw_cad | jww2dxf | 一致 |
+|---|---:|---:|---:|
+| LINE | 152,625 | 152,625 | 100 % |
+| ARC / CIRCLE / ELLIPSE | 10,001 | 10,001 | 100 % |
+| POINT | 2,313 | 2,313 | 100 % |
+| TEXT | 22,116 | 22,116 | 100 % |
+| ソリッド（面積） | 1,085 | 1,085 | 100 % |
+| 画像 | 16 | 16 | 100 % |
+
+ブロックを残す出力も、`INSERT` を ezdxf で分解して比べました（ブロックのある 20 図面、すべて一致）。
+出力はすべての DXF の版で ezdxf の検査を通ります。Windows 版と Linux 版の出力は同じです。
+
+Jw_cad の出力と、わざと変えているところ：色は普通の ACI の番号（Jw_cad は黒を 0 で書く）、
+文字の高さは Jw_cad の文字の高さのまま（Jw_cad は 0.83 倍する。同じにするなら `--text-factor 0.83`）、
+文字の幅は幅の係数で残す、画層名にレイヤグループ名も入れる、画像は `^@BM` の文字でなく `IMAGE` にする。
+
+## ビルド
+
+```
+cmake -S . -B build && cmake --build build && (cd build && ctest)
+```
+
+`-DJWW_STATIC=ON` で静的にリンクします。Windows 版は MinGW-w64 で作ります（`.github/workflows/build.yml`）。
+
+## ライセンス
+
+MIT（`LICENSE`）。`tests/data` の試験図面は [ezjww](https://github.com/monozukuri-ai/ezjww)（MIT）のものです。
+Jw_cad のコードは使っていません。Jw_cad の著作権は清水治郎・田中善文の両氏にあります。
