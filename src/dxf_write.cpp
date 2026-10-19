@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 #include "jww.hpp"
 #include "output.hpp"
+#include "image.hpp"
+
+#include <filesystem>
 
 #include <cmath>
 #include <cstdio>
@@ -105,6 +108,7 @@ private:
         if (!std::strpbrk(buf, ".eEn")) std::strcat(buf, ".0");
         put(code, buf);
     }
+    void gs_raw(int code, const std::string& utf) { g(code, enc(utf)); }
     void gs(int code, const std::string& utf) {  // text value: a literal '^' is written as "^ "
         std::string t;
         for (char ch : utf) { t += ch; if (ch == '^') t += ' '; }
@@ -137,8 +141,8 @@ private:
     };
     static double X(const Ctx& c, double x) { return (x + c.ox) * c.s; }
     static double Y(const Ctx& c, double y) { return (y + c.oy) * c.s; }
-    double ox() const { return o_.origin_center ? 0 : paper_size(dw_.paper).x / 2; }
-    double oy() const { return o_.origin_center ? 0 : paper_size(dw_.paper).x / 2 / std::sqrt(2.0); }
+    double ox() const { return o_.origin_center || dw_.paper == kNoPaper ? 0 : paper_size(dw_.paper).x / 2; }
+    double oy() const { return o_.origin_center || dw_.paper == kNoPaper ? 0 : paper_size(dw_.paper).x / 2 / std::sqrt(2.0); }
     double scale_of(const Base& b) const {
         double s = dw_.groups[(o_.group_scale ? b.glayer : dw_.write_glayer) & 15].scale;
         if (o_.paper_units || !(s > 0)) return 1;
@@ -351,12 +355,94 @@ private:
         }
         sub("AcDbText");
     }
-    void image(const Entity& e, const Ctx& c) {
-        // "^@BM<file>,..." image placement: keep as a note so nothing is silently lost.
-        (void)e; (void)c;
-        images_skipped_++;
+    struct ImageRef { std::string img, reactor, def, owner; };
+    struct ImageDef { std::string handle, path; int w = 0, h = 0; std::vector<std::string> reactors; };
+    std::vector<ImageRef> image_refs_;
+    std::map<std::string, ImageDef> image_defs_;  // by path
+    std::vector<std::string> image_order_;
+
+    static std::vector<std::string> split(const std::string& s, char sep) {
+        std::vector<std::string> v(1);
+        for (char ch : s) { if (ch == sep) v.emplace_back(); else v.back() += ch; }
+        return v;
     }
-    int images_skipped_ = 0;
+    static bool read_file(const std::string& path, std::vector<uint8_t>& d) {
+        std::FILE* f = std::fopen(path.c_str(), "rb");
+        if (!f) return false;
+        uint8_t buf[65536];
+        size_t n;
+        while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) d.insert(d.end(), buf, buf + n);
+        std::fclose(f);
+        return true;
+    }
+    // "^@BM<file>,<width mm>[,<height mm>,...]" placed at the text's start point and angle.
+    void image(const Entity& e, const Ctx& c) {
+        if (!o_.images || r12()) return;
+        auto f = split(e.str.substr(4), ',');
+        if (f.empty() || f[0].empty()) return;
+        std::string name = f[0];
+        double wmm = f.size() > 1 ? std::atof(f[1].c_str()) : 0;
+        double hmm = f.size() > 2 ? std::atof(f[2].c_str()) : 0;
+        std::string ref = name;
+        std::vector<uint8_t> data;
+        if (name.rfind("%temp%", 0) == 0) {  // embedded in the drawing (Ver.7.00+)
+            std::string base = name.substr(6);
+            for (const auto& im : dw_.images) {
+                if (im.name == base || im.name == base + ".gz") {
+                    try { data = im.name == base ? im.data : gunzip(im.data); } catch (const std::exception&) { data.clear(); }
+                    break;
+                }
+            }
+            ref = o_.image_ref_prefix + base;
+            if (!data.empty() && !o_.image_dir.empty() && !written_.count(base)) {
+                written_.insert(base);
+                std::error_code ec;
+                std::filesystem::create_directories(std::filesystem::u8path(o_.image_dir), ec);
+                std::FILE* out = std::fopen((std::filesystem::u8path(o_.image_dir) / std::filesystem::u8path(base)).string().c_str(), "wb");
+                if (out) { std::fwrite(data.data(), 1, data.size(), out); std::fclose(out); }
+            }
+        } else {
+            std::string p = name;
+            for (char& ch : p) if (ch == '\\') ch = '/';
+            if (p.rfind("./", 0) == 0) p = p.substr(2);
+            bool abs = p.size() > 1 && (p[0] == '/' || p[1] == ':');
+            std::string local = abs ? p : (o_.source_dir.empty() ? p : o_.source_dir + "/" + p);
+            read_file(std::filesystem::u8path(local).string(), data);
+        }
+        int pw = 0, ph = 0;
+        if (data.empty() || !image_size(data, pw, ph)) {
+            pw = 1000;
+            ph = wmm > 0 && hmm > 0 ? std::max(1, int(std::lround(1000 * hmm / wmm))) : 1000;
+        }
+        if (wmm <= 0) wmm = 100;
+        if (hmm <= 0) hmm = wmm * ph / pw;
+        ImageDef& d = image_defs_[ref];
+        if (d.handle.empty()) { d.handle = hnd(); d.path = ref; d.w = pw; d.h = ph; image_order_.push_back(ref); }
+        ImageRef r;
+        r.reactor = hnd();
+        d.reactors.push_back(r.reactor);
+        double a = e.angle * kPi / 180;
+        double ux = wmm * c.s / pw, vy = hmm * c.s / ph;
+        g(0, "IMAGE");
+        r.img = hnd();
+        g(5, r.img);
+        g(330, c.owner);
+        sub("AcDbEntity");
+        g(8, enc(layer(e.b)));
+        sub("AcDbRasterImage");
+        g(90, 0);
+        gd(10, X(c, e.p[0].x)); gd(20, Y(c, e.p[0].y)); gd(30, 0);
+        gd(11, ux * std::cos(a)); gd(21, ux * std::sin(a)); gd(31, 0);
+        gd(12, -vy * std::sin(a)); gd(22, vy * std::cos(a)); gd(32, 0);
+        gd(13, pw); gd(23, ph);
+        g(340, d.handle);
+        g(70, 7); g(280, 0); g(281, 50); g(282, 50); g(283, 0);
+        g(360, r.reactor);
+        g(71, 1); g(91, 2);
+        gd(14, -0.5); gd(24, -0.5); gd(14, pw - 0.5); gd(24, ph - 0.5);
+        image_refs_.push_back(r);
+    }
+    std::set<std::string> written_;
 
     void solid_quad(const Base& b, const Ctx& c, Pt a, Pt bb, Pt cc, Pt d, uint32_t rgb, bool has_rgb) {
         // polygon order a, bb, cc, d -> DXF SOLID 10=a 11=bb 12=d 13=cc
@@ -561,7 +647,8 @@ private:
 
     void insert(const Entity& e, const Ctx& c, int depth = 0) {
         if (!defs_.count(e.number)) return;
-        if (o_.explode_blocks) {
+        // Jw_cad keeps text readable in mirrored blocks; a mirrored DXF INSERT would mirror it.
+        if (o_.explode_blocks || (e.sx * e.sy < 0 && has_text(e.number, 0))) {
             explode(e, c, depth);
             return;
         }
@@ -575,6 +662,15 @@ private:
         if (e.angle != 0) gd(50, norm_deg(e.angle * 180 / kPi));
     }
 
+    bool has_text(uint32_t num, int depth) {
+        auto it = defs_.find(num);
+        if (it == defs_.end() || depth > 32) return false;
+        for (const auto& e : it->second->ents) {
+            if (e.kind == Kind::Text || e.kind == Kind::Dim) return true;
+            if (e.kind == Kind::Block && has_text(e.number, depth + 1)) return true;
+        }
+        return false;
+    }
     // Exploding: transform each figure of the definition.
     struct Xf {
         double a = 1, b = 0, c = 0, d = 1, tx = 0, ty = 0;  // x' = a x + b y + tx
@@ -728,7 +824,7 @@ void Writer::bounds(double& minx, double& miny, double& maxx, double& maxy) {
 void Writer::header(double minx, double miny, double maxx, double maxy) {
     g(0, "SECTION"); g(2, "HEADER");
     g(9, "$ACADVER"); g(1, r12() ? "AC1009" : utf8() ? "AC1021" : "AC1015");
-    if (!utf8()) { g(9, "$DWGCODEPAGE"); g(3, "ANSI_932"); }
+    g(9, "$DWGCODEPAGE"); g(3, "ANSI_932");  // R2007+ text is UTF-8 regardless
     g(9, "$INSBASE"); gd(10, 0); gd(20, 0); gd(30, 0);
     g(9, "$EXTMIN"); gd(10, minx); gd(20, miny); gd(30, 0);
     g(9, "$EXTMAX"); gd(10, maxx); gd(20, maxy); gd(30, 0);
@@ -907,13 +1003,56 @@ void Writer::run() {
         g(0, "SECTION"); g(2, "OBJECTS");
         g(0, "DICTIONARY"); g(5, "C"); g(330, "0"); sub("AcDbDictionary"); g(281, 1);
         g(3, "ACAD_GROUP"); g(350, "D");
+        if (!image_order_.empty()) { g(3, "ACAD_IMAGE_DICT"); g(350, "E"); }
         g(0, "DICTIONARY"); g(5, "D"); g(330, "C"); sub("AcDbDictionary"); g(281, 1);
+        if (!image_order_.empty()) {
+            g(0, "DICTIONARY"); g(5, "E"); g(330, "C"); sub("AcDbDictionary"); g(281, 1);
+            std::set<std::string> names;
+            for (auto& path : image_order_) {
+                std::string n = path;
+                auto k = n.find_last_of("/\\%");
+                if (k != std::string::npos) n = n.substr(k + 1);
+                auto dot = n.find_last_of('.');
+                if (dot != std::string::npos) n.erase(dot);
+                n = sanitize_layer(n);
+                std::string u = n;
+                for (int i = 2; names.count(u); i++) u = n + "_" + std::to_string(i);
+                names.insert(u);
+                g(3, enc(u)); g(350, image_defs_[path].handle);
+            }
+            for (auto& path : image_order_) {
+                const ImageDef& d = image_defs_[path];
+                g(0, "IMAGEDEF"); g(5, d.handle);
+                g(102, "{ACAD_REACTORS");
+                g(330, "E");
+                for (auto& r : d.reactors) g(330, r);
+                g(102, "}");
+                g(330, "E");
+                sub("AcDbRasterImageDef");
+                g(90, 0); gs_raw(1, d.path);
+                gd(10, d.w); gd(20, d.h); gd(11, 1); gd(21, 1);
+                g(280, 1); g(281, 0);
+            }
+            for (size_t i = 0; i < image_refs_.size(); i++) {
+                g(0, "IMAGEDEF_REACTOR"); g(5, image_refs_[i].reactor); g(330, image_refs_[i].img);
+                sub("AcDbRasterImageDefReactor"); g(90, 2); g(330, image_refs_[i].img);
+            }
+        }
         g(0, "ENDSEC");
     }
     g(0, "EOF");
     out_ = &head;
     header(ext_[0], ext_[1], ext_[2], ext_[3]);
-    if (!r12()) { g(0, "SECTION"); g(2, "CLASSES"); g(0, "ENDSEC"); }
+    if (!r12()) {
+        g(0, "SECTION"); g(2, "CLASSES");
+        if (!image_order_.empty()) {
+            const char* cls[][3] = {{"IMAGE", "AcDbRasterImage", "127"}, {"IMAGEDEF", "AcDbRasterImageDef", "0"}, {"IMAGEDEF_REACTOR", "AcDbRasterImageDefReactor", "1"}, {"RASTERVARIABLES", "AcDbRasterVariables", "0"}};
+            for (auto& k : cls) {
+                g(0, "CLASS"); g(1, k[0]); g(2, k[1]); g(3, "ISM"); g(90, std::atoi(k[2])); g(280, 0); g(281, k[0] == std::string("IMAGE") ? 1 : 0);
+            }
+        }
+        g(0, "ENDSEC");
+    }
 
     std::fwrite(head.data(), 1, head.size(), f_);
     std::fwrite(tabs.data(), 1, tabs.size(), f_);

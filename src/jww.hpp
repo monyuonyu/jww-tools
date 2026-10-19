@@ -80,6 +80,8 @@ struct LayerGroup {
 struct PenDef { uint32_t color = 0, width = 1, prt_color = 0, prt_width = 1; double prt_point_r = 0; std::string name; };
 struct LineTypeDef { uint32_t pattern = 0, unit_dot = 0, pitch = 0, prt_pitch = 0; std::string name; uint32_t segments = 0; double seg[10] = {0}; };
 
+constexpr uint32_t kNoPaper = 0xFFFFFFFF;  // symbols (.jws) have no sheet
+
 struct Drawing {
     std::string format;   // "jww" or "jws"
     uint32_t version = 0;

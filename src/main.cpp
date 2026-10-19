@@ -23,6 +23,8 @@ static void usage() {
         "  --utf8         write DXF R2007 (AC1021, UTF-8 text)\n"
         "  --explode      expand blocks instead of writing INSERTs\n"
         "  --hatch        write solids (ソリッド) as HATCH instead of SOLID pieces\n"
+        "  --no-images    do not write IMAGE entities (embedded images are otherwise\n"
+        "                 extracted to <output>_images/)\n"
         "  --paper        keep paper millimetres (do not apply layer group scales)\n"
         "  --group-scale  scale each layer group by its own scale (default: like Jw_cad,\n"
         "                 every group at the scale of the current write group)\n"
@@ -47,6 +49,7 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(a, "--utf8")) opt.version = jww::DxfOptions::R2007;
         else if (!std::strcmp(a, "--explode")) opt.explode_blocks = true;
         else if (!std::strcmp(a, "--hatch")) opt.hatch = true;
+        else if (!std::strcmp(a, "--no-images")) opt.images = false;
         else if (!std::strcmp(a, "--paper")) opt.paper_units = true;
         else if (!std::strcmp(a, "--group-scale")) opt.group_scale = true;
         else if (!std::strcmp(a, "--center")) opt.origin_center = true;
@@ -81,6 +84,18 @@ int main(int argc, char** argv) {
     }
     if (!quiet)
         for (auto& w : dw.warnings) std::fprintf(stderr, "jww2dxf: %s: warning: %s\n", in.c_str(), w.c_str());
+    if (!json) {
+        auto sl = in.find_last_of("/\\");
+        opt.source_dir = sl == std::string::npos ? "." : in.substr(0, sl);
+        if (out != "-") {
+            std::string stem = out;
+            auto dot = stem.find_last_of('.');
+            auto s2 = stem.find_last_of("/\\");
+            if (dot != std::string::npos && (s2 == std::string::npos || dot > s2)) stem.erase(dot);
+            opt.image_dir = stem + "_images";
+            opt.image_ref_prefix = (s2 == std::string::npos ? stem : stem.substr(s2 + 1)) + "_images/";
+        }
+    }
     std::FILE* f = out == "-" ? stdout : std::fopen(out.c_str(), "wb");
     if (!f) { std::fprintf(stderr, "jww2dxf: cannot write %s\n", out.c_str()); return 1; }
     if (json) jww::write_json(f, dw);

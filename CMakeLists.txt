@@ -7,7 +7,7 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 option(JWW_STATIC "Link the command line tools statically" OFF)
 
-add_library(jww STATIC src/jww_read.cpp src/encoding.cpp src/json_write.cpp src/dxf_write.cpp)
+add_library(jww STATIC src/inflate.cpp src/jww_read.cpp src/encoding.cpp src/json_write.cpp src/dxf_write.cpp)
 target_include_directories(jww PUBLIC src)
 
 add_executable(jww2dxf src/main.cpp)

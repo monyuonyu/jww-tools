@@ -341,9 +341,29 @@ Drawing read_buffer(const std::vector<uint8_t>& data) {
     Archive ar(data.data(), data.size());
     ar.skip(8);
     dw.version = ar.u32();
-    if (dw.format == "jws") throw std::runtime_error("JWS symbol files are not supported yet");
-
     size_t list_pos = 0;
+    if (dw.format == "jws") {
+        // Registered symbol (図形): fixed header, then the same lists as a drawing.
+        if (data.size() < 452) throw std::runtime_error("JWS file too short");
+        ar.seek(200);
+        dw.version = ar.u32();
+        ar.f64(); ar.f64();  // insertion origin
+        for (int g = 0; g < 16; g++) dw.groups[g].scale = ar.f64();
+        dw.paper = kNoPaper;
+        dw.header_complete = true;
+        list_pos = 452;
+        Reader rd(ar, dw);
+        ar.seek(list_pos);
+        try {
+            rd.entity_list(dw.ents);
+            rd.block_list(dw.blocks);
+        } catch (const std::exception& ex) {
+            dw.warnings.push_back(std::string("read stopped at offset ") + std::to_string(ar.pos()) + ": " + ex.what());
+        }
+        dw.unicode_strings = ar.unicode_seen;
+        return dw;
+    }
+
     try {
         read_header(ar, dw);
         list_pos = ar.pos();
