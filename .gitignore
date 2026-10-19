@@ -1,0 +1,3 @@
+build/
+*.dxf
+!tests/expected/*.dxf
