@@ -7,6 +7,7 @@
 #include <cstring>
 #include <fstream>
 #include <stdexcept>
+#include <algorithm>
 #include <cmath>
 
 namespace jww {
@@ -214,7 +215,7 @@ public:
 
     void entity_list(std::vector<Entity>& out) {
         uint32_t n = ar_.count();
-        out.reserve(out.size() + n);
+        out.reserve(out.size() + std::min<size_t>(n, (ar_.size() - ar_.pos()) / 16));
         for (uint32_t i = 0; i < n; i++) {
             Entity e;
             if (read_entity(e)) out.push_back(std::move(e));
@@ -284,7 +285,7 @@ void read_header(Archive& ar, Drawing& dw) {
     ar.skip(14 * 4);  // dummy
     ar.skip(5 * 4);   // 寸法設定
     ar.skip(4);       // dummy
-    ar.skip(4);       // 線描画の最大幅
+    dw.max_draw_width = int32_t(ar.u32());  // 線描画の最大幅 (-101 etc.: line widths in 1/100 mm)
     ar.skip(3 * 8);   // プリンタ原点, 倍率
     ar.skip(4 + 4);   // プリンタ設定, 目盛設定モード
     ar.skip(5 * 8);   // 目盛
@@ -304,7 +305,8 @@ void read_header(Archive& ar, Drawing& dw) {
     for (int n = 2; n <= 9; n++) { auto& t = dw.ltypes[n]; t.pattern = ar.u32(); t.unit_dot = ar.u32(); t.pitch = ar.u32(); t.prt_pitch = ar.u32(); }
     for (int n = 11; n <= 15; n++) { auto& t = dw.ltypes[n]; t.pattern = ar.u32(); t.unit_dot = ar.u32(); t.pitch = ar.u32(); ar.u32(); t.prt_pitch = ar.u32(); }
     for (int n = 16; n <= 19; n++) { auto& t = dw.ltypes[n]; t.pattern = ar.u32(); t.unit_dot = ar.u32(); t.pitch = ar.u32(); t.prt_pitch = ar.u32(); }
-    ar.skip(11 * 4);
+    ar.skip(10 * 4);
+    dw.prt_disp_only = ar.u32();  // Ver.6.00+: tens = printer dpi for widths (1: 300, 2: 600)
     if (v >= 223) ar.skip(4 + 4 + 3 * 4 + 2 * 8 + 2 * 8 + 8);
     if (v >= 225) ar.skip(8 + 2 * 8 + 8);
     if (v >= 230) { ar.u32(); dw.solid_color_default = ar.u32(); }

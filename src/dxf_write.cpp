@@ -56,18 +56,24 @@ std::vector<double> ltype_pattern(int style) {
     return {};
 }
 
-// Line weight (1/100 mm) for a pen. Jw_cad's printer widths are in 1/100 mm when the
-// drawing uses "線幅を1/100mm単位とする"; otherwise they are dot counts.
+// Line weight (1/100 mm) of a figure. Jw_cad's printer line widths are either 1/100 mm
+// ("線幅を1/100mm単位とする", header value <= -101) or printer dots (300 or 600 dpi).
 int lineweight(const Drawing& dw, const Base& b) {
     static const int valid[] = {0, 5, 9, 13, 15, 18, 20, 25, 30, 35, 40, 50, 53, 60, 70, 80, 90, 100, 106, 120, 140, 158, 200, 211};
-    int w = b.pen_width;
+    long long w = b.pen_width;
     if (w <= 0) {
         auto it = dw.pens.find(b.pen_color);
-        w = it != dw.pens.end() ? int(it->second.prt_width) : 1;
-        if (w < 100) w = w * 13 + 5;  // rough: dot widths -> 0.18, 0.31, ...
+        w = it != dw.pens.end() ? (long long)it->second.prt_width : 1;
+    }
+    w = std::max(0LL, std::min(w, 100000LL));
+    double hmm;  // 1/100 mm
+    if (dw.max_draw_width <= -101) hmm = double(w);
+    else {
+        int dpi = (dw.prt_disp_only / 10) % 10 == 2 ? 600 : 300;
+        hmm = w * 2540.0 / dpi;
     }
     int best = 0;
-    for (int v : valid) if (std::abs(v - w) < std::abs(best - w)) best = v;
+    for (int v : valid) if (std::fabs(v - hmm) < std::fabs(best - hmm)) best = v;
     return best;
 }
 
@@ -648,7 +654,8 @@ private:
     void insert(const Entity& e, const Ctx& c, int depth = 0) {
         if (!defs_.count(e.number)) return;
         // Jw_cad keeps text readable in mirrored blocks; a mirrored DXF INSERT would mirror it.
-        if (o_.explode_blocks || (e.sx * e.sy < 0 && has_text(e.number, 0))) {
+        // A definition that (indirectly) contains itself cannot be a DXF block: expand it (depth-limited).
+        if (o_.explode_blocks || (e.sx * e.sy < 0 && has_text(e.number, 0)) || (c.in_block && reaches(e.number, cur_def_))) {
             explode(e, c, depth);
             return;
         }
@@ -662,6 +669,22 @@ private:
         if (e.angle != 0) gd(50, norm_deg(e.angle * 180 / kPi));
     }
 
+    uint32_t cur_def_ = 0xFFFFFFFF;
+    bool reaches(uint32_t from, uint32_t target) {
+        std::set<uint32_t> seen;
+        std::vector<uint32_t> todo{from};
+        while (!todo.empty()) {
+            uint32_t n = todo.back();
+            todo.pop_back();
+            if (n == target) return true;
+            if (!seen.insert(n).second) continue;
+            auto it = defs_.find(n);
+            if (it == defs_.end()) continue;
+            for (const auto& e : it->second->ents)
+                if (e.kind == Kind::Block) todo.push_back(e.number);
+        }
+        return false;
+    }
     bool has_text(uint32_t num, int depth) {
         auto it = defs_.find(num);
         if (it == defs_.end() || depth > 32) return false;
@@ -686,8 +709,10 @@ private:
         if (c2.layer_key < 0 && !c2.in_block) c2.layer_key = (ins.b.glayer & 15) * 16 + (ins.b.layer & 15);
         explode_with(*defs_[ins.number], x, c2, depth);
     }
+    long long explode_budget_ = 20000000;  // figures written by expanding blocks (guards against cycles)
     void explode_with(const BlockDef& bd, const Xf& x, const Ctx& c, int depth) {
         for (const Entity& e0 : bd.ents) {
+            if (--explode_budget_ < 0) return;
             Entity e = e0;
             if (e.kind == Kind::Block) {
                 Xf y;
@@ -970,6 +995,7 @@ void Writer::run() {
     for (size_t i = 0; i < pending_.size(); i++) {
         auto k = pending_[i];
         const BlockDef& bd = *defs_[k.first];
+        cur_def_ = k.first;
         std::string name = block_names_[k];
         std::string rh = hnd();
         block_list.push_back(name);

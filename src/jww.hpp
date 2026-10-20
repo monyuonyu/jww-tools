@@ -95,6 +95,8 @@ struct Drawing {
     std::map<int, PenDef> pens;     // 0..9, 100..356
     std::map<int, LineTypeDef> ltypes; // 2..9, 11..15, 16..19, 30..62
     uint32_t solid_color_default = 0;
+    int32_t max_draw_width = 0;     // <= -101: pen widths are in 1/100 mm
+    uint32_t prt_disp_only = 0;
     double moji_x[11] = {0}, moji_y[11] = {0}, moji_d[11] = {0};
     uint32_t moji_col[11] = {0};
     std::vector<Entity> ents;
