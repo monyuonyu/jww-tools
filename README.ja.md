@@ -62,11 +62,13 @@ jww2dxf: 平面図.jww: overlapping collinear lines: 250 pairs (36 on one layer,
     #35 #67 [06_平面図_ハッチ][01_平面図_柱・壁] overlap (3240, 2009.848481)-(4250, 2009.848481)
     ...
 jww2dxf: 平面図.jww: collinear lines touching end to end (info: could be one line): 176 pairs (64 on one layer, 112 across layers)
+jww2dxf: 平面図.jww: check total: duplicate-lines 83, overlapping-lines 250, duplicate-circles 0, duplicate-arcs 0, touching-lines 176
 ```
 
 - **duplicate lines（二重の線）**：両端が（許容差の中で）同じ。向きが逆でも
 - **overlapping collinear lines（重なった線）**：一直線上にあって、許容差より長く重なっている（片方がもう片方に含まれる場合も）
 - **duplicate circles/ellipses・duplicate arcs（二重の円・円弧）**：中心・半径・形と、円弧なら両端も同じ
+- **check total**：最後の 1 行に、種類ごとの数をいつも同じ並びで出す（`grep "check total"` で複数の図面を並べて比べられる）
 - **touching（つながった線、参考）**：一直線上で端と端がつながっていて、1 本にできる。Jw_cad の曲線（曲線属性）のつなぎ目は出しません
 
 種類ごとに、同じレイヤの中のものとレイヤをまたぐものを数え、はじめの 10 件を図形の番号（`#n`、`--json` の `entities` の順番）、

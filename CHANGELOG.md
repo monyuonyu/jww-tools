@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2 — 2026-10-20
+
+- `--check` ends with one `check total:` line with the count of every kind (same keys every time), to compare many drawings side by side.
+- Default output unchanged.
+
 ## 0.1.1 — 2026-10-20
 
 - `--check` / `--warn-overlaps`: report duplicate lines, overlapping collinear lines, duplicate

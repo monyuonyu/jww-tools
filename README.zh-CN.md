@@ -61,11 +61,13 @@ jww2dxf: plan.jww: overlapping collinear lines: 250 pairs (36 on one layer, 214 
     #35 #67 [06_平面図_ハッチ][01_平面図_柱・壁] overlap (3240, 2009.848481)-(4250, 2009.848481)
     ...
 jww2dxf: plan.jww: collinear lines touching end to end (info: could be one line): 176 pairs (64 on one layer, 112 across layers)
+jww2dxf: 平面図.jww: check total: duplicate-lines 83, overlapping-lines 250, duplicate-circles 0, duplicate-arcs 0, touching-lines 176
 ```
 
 - **duplicate lines（重复直线）**：两端点（在容差内）相同，方向相反也算
 - **overlapping collinear lines（重叠直线）**：位于同一直线上，且重叠部分长于容差（包括一条包含另一条的情况）
 - **duplicate circles/ellipses、duplicate arcs（重复的圆、圆弧）**：圆心、半径、形状以及（圆弧的）两端点相同
+- **check total**：最后一行总是以相同的顺序列出各类的数量（用 `grep "check total"` 可以并排比较多张图纸）
 - **touching（相接，仅供参考）**：位于同一直线上且首尾相接，可以合并为一条。Jw_cad 曲线（曲線属性）的各段之间不报告
 
 每一类分别统计同一图层内和跨图层的数量，并显示前 10 个，附图形编号（`#n`，即 `--json` 中 `entities` 的序号）、DXF 图层名和 DXF 坐标。

@@ -63,11 +63,13 @@ jww2dxf: plan.jww: overlapping collinear lines: 250 pairs (36 on one layer, 214 
     #35 #67 [06_平面図_ハッチ][01_平面図_柱・壁] overlap (3240, 2009.848481)-(4250, 2009.848481)
     ...
 jww2dxf: plan.jww: collinear lines touching end to end (info: could be one line): 176 pairs (64 on one layer, 112 across layers)
+jww2dxf: 平面図.jww: check total: duplicate-lines 83, overlapping-lines 250, duplicate-circles 0, duplicate-arcs 0, touching-lines 176
 ```
 
 - **duplicate lines**: the same end points (within the tolerance), in either direction
 - **overlapping collinear lines**: on one line and sharing a stretch longer than the tolerance (also one inside the other)
 - **duplicate circles/ellipses** and **duplicate arcs**: same centre, radius, shape and (for arcs) the same end points
+- **check total**: the last line gives the count of every kind, always with the same keys (`grep "check total"` to compare many drawings side by side)
 - **touching** (information only): on one line and meeting end to end, so they could be one line.
   Consecutive pieces of a Jw_cad curve (曲線) are not reported.
 

@@ -9,7 +9,7 @@
 #include <string>
 
 #ifndef JWW_TOOLS_VERSION
-#define JWW_TOOLS_VERSION "0.1.1"
+#define JWW_TOOLS_VERSION "0.1.2"
 #endif
 
 static void usage() {
@@ -94,6 +94,13 @@ static void print_check(const std::string& in, const jww::Drawing& dw, const jww
         }
     }
     if (r.issues.empty()) std::fprintf(stderr, "jww2dxf: %s: check: no duplicates or overlaps\n", nm);
+    // one line with every kind, always the same keys: easy to compare many drawings (grep "check total")
+    size_t cnt[5] = {};
+    for (auto& is : r.issues)
+        for (size_t i = 0; i < 5; i++)
+            if (is.type == kinds[i].t) cnt[i]++;
+    std::fprintf(stderr, "jww2dxf: %s: check total: duplicate-lines %zu, overlapping-lines %zu, duplicate-circles %zu, "
+                 "duplicate-arcs %zu, touching-lines %zu\n", nm, cnt[0], cnt[1], cnt[2], cnt[3], cnt[4]);
 }
 
 #ifdef _WIN32
