@@ -38,9 +38,46 @@ jww2dxf --json 図面.jww          # 読んだ内容を全部 JSON で出す
 | `--text-factor F` | DXF の文字の高さ = Jw_cad の文字の高さ × F（既定 1。Jw_cad 自身の出力は 0.83） |
 | `--no-temp` | 仮点を書かない |
 | `--no-images` | 画像（`IMAGE`）を書かない |
+| `--check`（`--warn-overlaps` でも可） | 重なった線・二重の線などを標準エラーに出す（下を参照） |
+| `--strict` | `--check` と一緒に使い、見つかったら終了コード 4 |
+| `--tol MM` | `--check` と `--merge-collinear` の許容差。DXF 上の mm（既定は図面の大きさの 100 万分の 1、最小 0.0001） |
+| `--merge-collinear` | 一直線上で重なる・つながる線を 1 本にして書く（下を参照） |
 | `-q` | 警告を出さない |
 
-終了コード：0 = 変換できた、1 = 読めない、3 = 図形の並びを最後まで読めなかった（読めたところまでは DXF にある）。
+終了コード：0 = 変換できた、1 = 読めない、3 = 図形の並びを最後まで読めなかった（読めたところまでは DXF にある）、
+4 = `--strict` で、二重の線や重なりが見つかった（DXF は普通に書く）。
+
+### 二重の線・重なった線
+
+Jw_cad の図面では、外形線が細切れになっていたり、二重に引かれていたりすることがよくあり、変換した図面を編集するときに邪魔になります。
+`--check` を付けると、それを標準エラーに出します（DXF は変わりません）：
+
+```
+$ jww2dxf --check 平面図.jww
+jww2dxf: 平面図.jww: check: 10948 lines, 23 circles/arcs; tolerance 0.0142547 mm (coordinates as in the DXF)
+jww2dxf: 平面図.jww: duplicate lines: 83 groups (47 on one layer, 36 across layers)
+    #13 #34 [01_平面図_柱・壁][06_平面図_ハッチ] (2330, 2009.848481)-(2430, 2009.848481)
+    ...
+jww2dxf: 平面図.jww: overlapping collinear lines: 250 pairs (36 on one layer, 214 across layers)
+    #35 #67 [06_平面図_ハッチ][01_平面図_柱・壁] overlap (3240, 2009.848481)-(4250, 2009.848481)
+    ...
+jww2dxf: 平面図.jww: collinear lines touching end to end (info: could be one line): 176 pairs (64 on one layer, 112 across layers)
+```
+
+- **duplicate lines（二重の線）**：両端が（許容差の中で）同じ。向きが逆でも
+- **overlapping collinear lines（重なった線）**：一直線上にあって、許容差より長く重なっている（片方がもう片方に含まれる場合も）
+- **duplicate circles/ellipses・duplicate arcs（二重の円・円弧）**：中心・半径・形と、円弧なら両端も同じ
+- **touching（つながった線、参考）**：一直線上で端と端がつながっていて、1 本にできる。Jw_cad の曲線（曲線属性）のつなぎ目は出しません
+
+種類ごとに、同じレイヤの中のものとレイヤをまたぐものを数え、はじめの 10 件を図形の番号（`#n`、`--json` の `entities` の順番）、
+DXF の画層名、DXF 上の座標で示します。`--json` には常に `check`（許容差・図面の大きさ）と、全件の `issues` が入ります
+（`type`・`severity`・`same_layer`・`entities`・`layers`・`lines` / `overlap` / `at` か `center` / `r`）。
+調べるのは図面に直接ある線と円・円弧だけです（ブロックや寸法図形の中は見ません）。
+許容差は DXF 上の mm での絶対値で、既定は図面の大きさの 100 万分の 1（最小 0.0001 mm）です。
+
+`--merge-collinear` は、一直線上で重なる・つながる線を 1 本にして DXF に書きます。まとめるのは、同じレイヤで線種・線色・線幅が同じもの
+だけです（曲線の部品はまとめません）。いちばん先の線を両端いっぱいに伸ばし、残りは書きません。許容差より曲がっている並びはそのままにします。
+既定では使いません。付けなければ、DXF は 0.1.0 とバイト単位で同じです。
 
 ## 変換するもの
 

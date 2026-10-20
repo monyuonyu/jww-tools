@@ -38,9 +38,45 @@ jww2dxf --json drawing.jww          # 以 JSON 输出读取到的全部内容
 | `--text-factor F` | DXF 文字高度 = Jw_cad 文字高度 × F（默认 1；Jw_cad 自身导出为 0.83） |
 | `--no-temp` | 不输出临时点（仮点） |
 | `--no-images` | 不输出 `IMAGE` |
+| `--check`（也可写作 `--warn-overlaps`） | 在标准错误输出中报告重复和重叠的图形（见下文） |
+| `--strict` | 与 `--check` 一起使用：发现重复或重叠时退出码为 4 |
+| `--tol MM` | `--check` 和 `--merge-collinear` 的容差，单位为 DXF 中的毫米（默认：图面尺寸的百万分之一，最小 0.0001） |
+| `--merge-collinear` | 将共线且重叠或相接的直线合并为一条写出（见下文） |
 | `-q` | 不显示警告 |
 
-退出码：0 = 转换成功，1 = 无法读取，3 = 图形列表未能读到最后（DXF 中包含已读取的部分）。
+退出码：0 = 转换成功，1 = 无法读取，3 = 图形列表未能读到最后（DXF 中包含已读取的部分），
+4 = 使用 `--strict` 且发现了重复或重叠（DXF 照常写出）。
+
+### 重复和重叠的直线
+
+Jw_cad 图面中的轮廓线经常被分成多段或画了两遍，编辑转换后的图面时会造成麻烦。`--check` 会把它们列在标准错误输出中（DXF 不变）：
+
+```
+$ jww2dxf --check plan.jww
+jww2dxf: plan.jww: check: 10948 lines, 23 circles/arcs; tolerance 0.0142547 mm (coordinates as in the DXF)
+jww2dxf: plan.jww: duplicate lines: 83 groups (47 on one layer, 36 across layers)
+    #13 #34 [01_平面図_柱・壁][06_平面図_ハッチ] (2330, 2009.848481)-(2430, 2009.848481)
+    ...
+jww2dxf: plan.jww: overlapping collinear lines: 250 pairs (36 on one layer, 214 across layers)
+    #35 #67 [06_平面図_ハッチ][01_平面図_柱・壁] overlap (3240, 2009.848481)-(4250, 2009.848481)
+    ...
+jww2dxf: plan.jww: collinear lines touching end to end (info: could be one line): 176 pairs (64 on one layer, 112 across layers)
+```
+
+- **duplicate lines（重复直线）**：两端点（在容差内）相同，方向相反也算
+- **overlapping collinear lines（重叠直线）**：位于同一直线上，且重叠部分长于容差（包括一条包含另一条的情况）
+- **duplicate circles/ellipses、duplicate arcs（重复的圆、圆弧）**：圆心、半径、形状以及（圆弧的）两端点相同
+- **touching（相接，仅供参考）**：位于同一直线上且首尾相接，可以合并为一条。Jw_cad 曲线（曲線属性）的各段之间不报告
+
+每一类分别统计同一图层内和跨图层的数量，并显示前 10 个，附图形编号（`#n`，即 `--json` 中 `entities` 的序号）、DXF 图层名和 DXF 坐标。
+`--json` 总是包含 `check`（容差、图面尺寸）和列出全部问题的 `issues`
+（`type`、`severity`、`same_layer`、`entities`、`layers`、`lines` / `overlap` / `at` 或 `center` / `r`）。
+只检查图面中直接存在的直线和圆、圆弧（不检查图块和尺寸图形的内部）。
+容差是 DXF 中以毫米为单位的绝对值，默认为图面尺寸的百万分之一，最小 0.0001 mm。
+
+`--merge-collinear` 将共线且重叠或相接的一组直线作为一条写入 DXF，仅合并位于同一图层、线型、颜色和线宽都相同的直线（不合并曲线的各段）。
+合并后的直线取代其中最前面的一条，取最外侧的端点，其余的不再写出。弯曲超过容差的一组保持原样。
+默认不启用；不使用时，DXF 与 0.1.0 逐字节相同。
 
 ## 转换内容
 

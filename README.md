@@ -39,9 +39,49 @@ jww2dxf --json drawing.jww          # dump everything that was read, as JSON
 | `--text-factor F` | DXF text height = Jw_cad character height × F (default 1; Jw_cad's own export uses 0.83) |
 | `--no-temp` | do not write temporary points (仮点) |
 | `--no-images` | do not write `IMAGE` entities |
+| `--check` (or `--warn-overlaps`) | report duplicate and overlapping figures on stderr (see below) |
+| `--strict` | with `--check`: exit status 4 if duplicates or overlaps were found |
+| `--tol MM` | tolerance for `--check` and `--merge-collinear`, in DXF millimetres (default: 1e-6 of the drawing's extent, at least 0.0001) |
+| `--merge-collinear` | write collinear lines that overlap or touch as one line (see below) |
 | `-q` | no warnings |
 
-Exit status: 0 = converted, 1 = cannot read, 3 = the figure list could not be read to the end (the DXF has what was read).
+Exit status: 0 = converted, 1 = cannot read, 3 = the figure list could not be read to the end (the DXF has what was read),
+4 = `--strict` and duplicates or overlaps were found (the DXF is written all the same).
+
+### Duplicate and overlapping lines
+
+Outlines in Jw_cad drawings are often split into pieces or drawn twice, which gets in the way when the
+converted drawing is edited. `--check` lists them on stderr; the DXF is not changed:
+
+```
+$ jww2dxf --check plan.jww
+jww2dxf: plan.jww: check: 10948 lines, 23 circles/arcs; tolerance 0.0142547 mm (coordinates as in the DXF)
+jww2dxf: plan.jww: duplicate lines: 83 groups (47 on one layer, 36 across layers)
+    #13 #34 [01_平面図_柱・壁][06_平面図_ハッチ] (2330, 2009.848481)-(2430, 2009.848481)
+    ...
+jww2dxf: plan.jww: overlapping collinear lines: 250 pairs (36 on one layer, 214 across layers)
+    #35 #67 [06_平面図_ハッチ][01_平面図_柱・壁] overlap (3240, 2009.848481)-(4250, 2009.848481)
+    ...
+jww2dxf: plan.jww: collinear lines touching end to end (info: could be one line): 176 pairs (64 on one layer, 112 across layers)
+```
+
+- **duplicate lines**: the same end points (within the tolerance), in either direction
+- **overlapping collinear lines**: on one line and sharing a stretch longer than the tolerance (also one inside the other)
+- **duplicate circles/ellipses** and **duplicate arcs**: same centre, radius, shape and (for arcs) the same end points
+- **touching** (information only): on one line and meeting end to end, so they could be one line.
+  Consecutive pieces of a Jw_cad curve (曲線) are not reported.
+
+Each kind is counted on one layer and across layers, and the first 10 are shown with their figure numbers
+(`#n`, the index in `--json`'s `entities`), DXF layer names and DXF coordinates. `--json` always has a
+`check` object (tolerance, extent) and an `issues` array with all of them
+(`type`, `severity`, `same_layer`, `entities`, `layers`, `lines` / `overlap` / `at` or `center` / `r`).
+Only top-level lines and circles/arcs are examined (not the insides of blocks or dimensions).
+The tolerance is absolute, in the DXF's millimetres; the default is one millionth of the drawing's size, at least 0.0001 mm.
+
+`--merge-collinear` writes each run of collinear lines that overlap or touch as one line, when they are on the
+same layer with the same line type, colour and width (and not pieces of a curve). The merged line takes the place
+of the first of them, with the outermost end points; the others are left out. A run that bends by more than the
+tolerance is left as drawn. It is off by default: without it the DXF is the same, byte for byte, as with 0.1.0.
 
 ## What is converted
 
