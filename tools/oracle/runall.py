@@ -5,7 +5,7 @@ J = os.environ.get('JWW2DXF', '/tmp/jww2dxf')
 here = os.path.dirname(os.path.abspath(__file__))
 idx = json.load(open(os.path.join(here, 'index.json')))
 os.makedirs(os.path.join(here, 'ours'), exist_ok=True)
-agg = {k: collections.Counter() for k in ('lt', 'color', 'layer', 'wfactor', 'hr')}
+agg = {k: collections.Counter() for k in ('lt', 'lw', 'color', 'layer', 'wfactor', 'hr')}
 tot = collections.Counter(); files = collections.Counter(); bad = []
 extra = sys.argv[1:]
 for f in sorted(os.listdir(os.path.join(here, 'ref'))):
@@ -23,7 +23,7 @@ for f in sorted(os.listdir(os.path.join(here, 'ref'))):
     except Exception:
         files['diff_error'] += 1; bad.append((h, p.stderr[-300:])); continue
     for k, v in res['stats'].items(): tot[k] += v
-    for k in ('lt', 'color', 'layer', 'wfactor'):
+    for k in ('lt', 'lw', 'color', 'layer', 'wfactor'):
         for row in res[k]: agg[k][json.dumps(row[:2], ensure_ascii=False)] += row[2]
     for r_, n_ in res['text_height_ratio']: agg['hr'][str(r_)] += n_
     files['ok' if p.returncode == 0 else 'mismatch'] += 1

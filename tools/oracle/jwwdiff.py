@@ -185,7 +185,7 @@ def solid_poly(e):
 
 
 def attrs(e):
-    return {'lt': s(e, 6, 'BYLAYER'), 'c': s(e, 62, '256'), 'tc': s(e, 420, ''), 'layer': s(e, 8), 'style': s(e, 7, ''), 'w': f(e, 41, d=1.0) if e['type'] == 'TEXT' else None}
+    return {'lw': s(e, 370, ''), 'lt': s(e, 6, 'BYLAYER'), 'c': s(e, 62, '256'), 'tc': s(e, 420, ''), 'layer': s(e, 8), 'style': s(e, 7, ''), 'w': f(e, 41, d=1.0) if e['type'] == 'TEXT' else None}
 
 
 def canon(e, off):
@@ -302,7 +302,7 @@ def main():
     stats = collections.Counter()
     problems = []
     height_ratios = []
-    pairs_lt, pairs_c, pairs_layer, pairs_w = collections.Counter(), collections.Counter(), collections.Counter(), collections.Counter()
+    pairs_lt, pairs_c, pairs_layer, pairs_w, pairs_lw = (collections.Counter() for _ in range(5))
 
     def close(a, b, t):
         return len(a) == len(b) and all(abs(x - y) <= t * (1 + (abs(y) / ext if False else 0)) for x, y in zip(a, b))
@@ -341,6 +341,7 @@ def main():
             stats[c[0] + '.matched'] += 1
             a, b = c[3]['_a'], ref[hit][3]['_a']
             pairs_lt[(a['lt'], b['lt'])] += 1
+            pairs_lw[(a['lw'], b['lw'])] += 1
             pairs_c[((a['c'], a['tc']), (b['c'], b['tc']))] += 1
             pairs_layer[(a['layer'], b['layer'])] += 1
             if c[0] == 'TEXT':
@@ -372,7 +373,7 @@ def main():
             problems.append(('ref-only', r))
     hr = collections.Counter(height_ratios)
     result = {'stats': dict(stats), 'text_height_ratio': hr.most_common(3), 'tol': tol,
-              'lt': [[k[0], k[1], v] for k, v in pairs_lt.items()], 'color': [[list(k[0]), list(k[1]), v] for k, v in pairs_c.items()],
+              'lt': [[k[0], k[1], v] for k, v in pairs_lt.items()], 'lw': [[k[0], k[1], v] for k, v in pairs_lw.items()], 'color': [[list(k[0]), list(k[1]), v] for k, v in pairs_c.items()],
               'layer': [[k[0], k[1], v] for k, v in pairs_layer.items()], 'wfactor': [[k[0], k[1], v] for k, v in pairs_w.items()]}
     print(json.dumps(result, ensure_ascii=False))
     if verbose:
