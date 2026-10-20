@@ -2,6 +2,7 @@
 #pragma once
 #include <cstdio>
 #include <string>
+#include <vector>
 #include "jww.hpp"
 
 namespace jww {
@@ -21,7 +22,36 @@ struct DxfOptions {
     bool origin_center = false;  // keep the Jw_cad origin (paper centre) instead of the paper's lower-left corner
 };
 
-void write_json(std::FILE* f, const Drawing& dw);
+// ---- drawing check (duplicate / overlapping figures) ----------------------
+// Coordinates and tolerances are in the DXF's model space (mm), i.e. after the same
+// scale and origin shift write_dxf applies with the same options.
+struct Issue {
+    enum Type { DuplicateLine, OverlapLines, TouchingLines, DuplicateCircle, DuplicateArc } type;
+    std::vector<size_t> ents;    // indices into Drawing::ents (sorted)
+    bool same_layer = true;      // all figures on one layer (group x layer)
+    Pt a, b;                     // overlap: the shared part a-b; touching: a = joint; arcs: a = centre
+    double r = 0;                // arcs: radius
+    std::vector<Pt> ends;        // lines: the two end points of each figure, in the order of ents
+};
+struct CheckResult {
+    double tol = 0, extent = 0;
+    size_t lines = 0, arcs = 0;  // figures examined
+    std::vector<Issue> issues;
+};
+// tol <= 0: max(1e-6 * extent, 1e-4 mm).
+CheckResult check_drawing(const Drawing& dw, const DxfOptions& opt, double tol);
+const char* issue_name(Issue::Type t);
+bool issue_is_info(Issue::Type t);
+// Lines merged by --merge-collinear: collinear lines on the same layer with the same
+// line type, colour and width that overlap or touch become one line (the first one, with
+// the outermost end points of the group); the others are removed. Returns the number removed.
+size_t merge_collinear(Drawing& dw, const DxfOptions& opt, double tol);
+// DXF layer name of layer group/layer key (group * 16 + layer).
+std::string dxf_layer_name(const Drawing& dw, int key);
+// DXF model space position of a point of a top-level figure.
+Pt dxf_point(const Drawing& dw, const DxfOptions& opt, const Base& b, Pt p);
+
+void write_json(std::FILE* f, const Drawing& dw, const CheckResult* check = nullptr);
 void write_dxf(std::FILE* f, const Drawing& dw, const DxfOptions& opt);
 
 }  // namespace jww

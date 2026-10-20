@@ -84,6 +84,21 @@ std::string sanitize_layer(std::string s) {
     return s;
 }
 
+}  // namespace
+
+std::string dxf_layer_name(const Drawing& dw, int key) {
+    int gi = (key / 16) & 15, li = key % 16;
+    char buf[8];
+    std::snprintf(buf, sizeof buf, "%X%X", gi, li);
+    std::string n = buf;
+    const auto& G = dw.groups[gi];
+    if (!G.name.empty()) n += "_" + G.name;
+    if (!G.layers[li].name.empty()) n += "_" + G.layers[li].name;
+    return sanitize_layer(n);
+}
+
+namespace {
+
 class Writer {
 public:
     Writer(std::FILE* f, const Drawing& dw, const DxfOptions& o) : f_(f), dw_(dw), o_(o) {}
@@ -168,14 +183,7 @@ private:
     std::string layer_name(int key) {
         auto it = layer_names_.find(key);
         if (it != layer_names_.end()) return it->second;
-        int gi = key / 16, li = key % 16;
-        char buf[8];
-        std::snprintf(buf, sizeof buf, "%X%X", gi, li);
-        std::string n = buf;
-        const auto& G = dw_.groups[gi];
-        if (!G.name.empty()) n += "_" + G.name;
-        if (!G.layers[li].name.empty()) n += "_" + G.layers[li].name;
-        n = sanitize_layer(n);
+        std::string n = dxf_layer_name(dw_, key);
         layer_names_[key] = n;
         return n;
     }

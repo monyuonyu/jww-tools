@@ -62,7 +62,7 @@ void ent(std::FILE* f, const Entity& e) {
 }
 }  // namespace
 
-void write_json(std::FILE* f, const Drawing& dw) {
+void write_json(std::FILE* f, const Drawing& dw, const CheckResult* check) {
     std::fprintf(f, "{\"format\":\"%s\",\"version\":%u,\"memo\":", dw.format.c_str(), dw.version);
     js(f, dw.memo);
     std::fprintf(f, ",\"paper\":%u,\"write_glayer\":%u,\"header_complete\":%s,\"list_found_by_scan\":%s,\"unicode_strings\":%s,\n\"groups\":[",
@@ -108,7 +108,44 @@ void write_json(std::FILE* f, const Drawing& dw) {
     }
     std::fputs("],\n\"warnings\":[", f);
     for (size_t i = 0; i < dw.warnings.size(); i++) { if (i) std::fputc(',', f); js(f, dw.warnings[i]); }
-    std::fputs("]}\n", f);
+    std::fputc(']', f);
+    if (check) {
+        auto pt = [&](const Pt& p) { std::fputc('[', f); num(f, p.x); std::fputc(',', f); num(f, p.y); std::fputc(']', f); };
+        std::fputs(",\n\"check\":{\"tol\":", f); num(f, check->tol);
+        std::fputs(",\"extent\":", f); num(f, check->extent);
+        std::fprintf(f, ",\"lines\":%zu,\"arcs\":%zu,\"coordinates\":\"dxf\"},\n\"issues\":[", check->lines, check->arcs);
+        for (size_t i = 0; i < check->issues.size(); i++) {
+            const Issue& is = check->issues[i];
+            std::fprintf(f, "%s{\"type\":\"%s\",\"severity\":\"%s\",\"same_layer\":%s,\"entities\":[", i ? ",\n" : "\n", issue_name(is.type),
+                         issue_is_info(is.type) ? "info" : "warning", is.same_layer ? "true" : "false");
+            for (size_t k = 0; k < is.ents.size(); k++) std::fprintf(f, "%s%zu", k ? "," : "", is.ents[k]);
+            std::fputs("],\"layers\":[", f);
+            for (size_t k = 0; k < is.ents.size(); k++) {
+                if (k) std::fputc(',', f);
+                const Base& b = dw.ents[is.ents[k]].b;
+                js(f, dxf_layer_name(dw, (b.glayer & 15) * 16 + (b.layer & 15)));
+            }
+            std::fputc(']', f);
+            switch (is.type) {
+                case Issue::DuplicateLine: case Issue::OverlapLines: case Issue::TouchingLines:
+                    std::fputs(",\"lines\":[", f);
+                    for (size_t k = 0; k + 1 < is.ends.size(); k += 2) {
+                        std::fputs(k ? ",[" : "[", f); pt(is.ends[k]); std::fputc(',', f); pt(is.ends[k + 1]); std::fputc(']', f);
+                    }
+                    std::fputc(']', f);
+                    if (is.type == Issue::OverlapLines) { std::fputs(",\"overlap\":[", f); pt(is.a); std::fputc(',', f); pt(is.b); std::fputc(']', f); }
+                    if (is.type == Issue::TouchingLines) { std::fputs(",\"at\":", f); pt(is.a); }
+                    break;
+                case Issue::DuplicateCircle: case Issue::DuplicateArc:
+                    std::fputs(",\"center\":", f); pt(is.a);
+                    std::fputs(",\"r\":", f); num(f, is.r);
+                    break;
+            }
+            std::fputc('}', f);
+        }
+        std::fputc(']', f);
+    }
+    std::fputs("}\n", f);
 }
 
 }  // namespace jww

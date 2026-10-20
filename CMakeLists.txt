@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.13)
-project(jww-tools VERSION 0.1.0 LANGUAGES CXX)
+project(jww-tools VERSION 0.1.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 if(NOT CMAKE_BUILD_TYPE)
@@ -7,7 +7,7 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 option(JWW_STATIC "Link the command line tools statically" OFF)
 
-add_library(jww STATIC src/inflate.cpp src/jww_read.cpp src/encoding.cpp src/json_write.cpp src/dxf_write.cpp)
+add_library(jww STATIC src/inflate.cpp src/jww_read.cpp src/encoding.cpp src/json_write.cpp src/dxf_write.cpp src/check.cpp)
 target_include_directories(jww PUBLIC src)
 
 add_executable(jww2dxf src/main.cpp)
@@ -26,3 +26,7 @@ install(TARGETS jww2dxf RUNTIME DESTINATION bin)
 
 enable_testing()
 add_test(NAME samples COMMAND ${CMAKE_COMMAND} -DJWW2DXF=$<TARGET_FILE:jww2dxf> -DSRC=${CMAKE_SOURCE_DIR} -P ${CMAKE_SOURCE_DIR}/tests/run.cmake)
+add_executable(check_test tests/check_test.cpp)
+target_link_libraries(check_test jww)
+add_test(NAME check COMMAND check_test)
+add_test(NAME check_cli COMMAND ${CMAKE_COMMAND} -DJWW2DXF=$<TARGET_FILE:jww2dxf> -DSRC=${CMAKE_SOURCE_DIR} -P ${CMAKE_SOURCE_DIR}/tests/check_cli.cmake)
