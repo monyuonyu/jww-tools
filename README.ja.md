@@ -16,7 +16,7 @@ Jw_cad 自身の DXF 出力と、図形ごとに突き合わせて確かめて�
 
 ## ダウンロード
 
-Windows 用と Linux 用の実行ファイルは [Releases](https://github.com/monyuonyu/jww-tools/releases) にあります
+**最新版: [Releases の Latest](https://github.com/monyuonyu/jww-tools/releases/latest)**（前の版は [Releases](https://github.com/monyuonyu/jww-tools/releases) の一覧に）。Windows 用と Linux 用の実行ファイルがあります
 （どちらもファイル 1 つ。Windows 版は署名していないので、SmartScreen の警告が出ることがあります）。
 
 ## 使い方

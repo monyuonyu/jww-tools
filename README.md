@@ -17,7 +17,7 @@ which opens `.jww` files directly.
 
 ## Download
 
-Windows and Linux executables are on the [Releases](https://github.com/monyuonyu/jww-tools/releases)
+**Latest version: [Releases, Latest](https://github.com/monyuonyu/jww-tools/releases/latest)** (earlier versions on [Releases](https://github.com/monyuonyu/jww-tools/releases)). Windows and Linux executables are there
 page (one file each; the Windows build is not signed, SmartScreen may warn).
 
 ## Usage

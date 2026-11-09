@@ -16,7 +16,7 @@
 
 ## 下载
 
-Windows 和 Linux 的可执行文件见 [Releases](https://github.com/monyuonyu/jww-tools/releases)
+**最新版：[Releases 的 Latest](https://github.com/monyuonyu/jww-tools/releases/latest)**（以前的版本见 [Releases](https://github.com/monyuonyu/jww-tools/releases) 列表）。提供 Windows 和 Linux 的可执行文件
 （各一个文件；Windows 版未签名，SmartScreen 可能会提示警告）。
 
 ## 用法
